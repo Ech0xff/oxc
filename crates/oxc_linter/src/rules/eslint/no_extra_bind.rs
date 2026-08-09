@@ -7,10 +7,7 @@ use oxc_macros::declare_oxc_lint;
 use oxc_span::Span;
 
 use crate::{
-    AstNode,
-    ast_util::is_method_call,
-    context::LintContext,
-    rule::Rule,
+    AstNode, ast_util::is_method_call, context::LintContext, rule::Rule,
     utils::function_body_contains_this,
 };
 

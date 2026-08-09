@@ -1,8 +1,8 @@
 use oxc_ast::{
     AstKind,
     ast::{
-        BindingPattern, Expression, Function, FunctionBody, IdentifierReference, PropertyDefinition,
-        StaticBlock, ThisExpression, VariableDeclarationKind,
+        BindingPattern, Expression, Function, FunctionBody, IdentifierReference,
+        PropertyDefinition, StaticBlock, ThisExpression, VariableDeclarationKind,
     },
 };
 use oxc_ast_visit::{VisitJs, walk_js};

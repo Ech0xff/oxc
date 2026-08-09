@@ -45,6 +45,7 @@ pub trait GenExpr: GetSpan {
 impl Gen for Program<'_> {
     fn r#gen(&self, p: &mut Codegen, ctx: Context) {
         p.is_jsx = self.source_type.is_jsx();
+        p.is_typescript = self.source_type.is_typescript();
 
         // Allow for inserting comments to the top of the file.
         p.print_comments_at(0);
@@ -1613,35 +1614,41 @@ impl GenExpr for CallExpression<'_> {
 }
 
 impl Gen for Argument<'_> {
-    fn r#gen(&self, p: &mut Codegen, ctx: Context) {
-        match self {
-            Self::SpreadElement(elem) => elem.print(p, ctx),
-            _ => self.to_expression().print_expr(p, Precedence::Comma, Context::empty()),
-        }
+    fn r#gen(&self, p: &mut Codegen, _ctx: Context) {
+        p.print_argument(self, Precedence::Comma);
     }
 }
 
 impl Gen for ArrayExpressionElement<'_> {
-    fn r#gen(&self, p: &mut Codegen, ctx: Context) {
-        match self {
-            Self::SpreadElement(elem) => elem.print(p, ctx),
-            Self::Elision(_span) => {}
-            _ => self.to_expression().print_expr(p, Precedence::Comma, Context::empty()),
-        }
+    fn r#gen(&self, p: &mut Codegen, _ctx: Context) {
+        p.print_array_element(self, Precedence::Comma);
     }
 }
 
 impl Gen for SpreadElement<'_> {
     fn r#gen(&self, p: &mut Codegen, _ctx: Context) {
-        p.add_source_mapping(self.span);
-        p.print_ellipsis();
-        self.argument.print_expr(p, Precedence::Comma, Context::empty());
+        p.print_spread_element(self, Precedence::Comma);
     }
 }
 
 impl Gen for ArrayExpression<'_> {
-    fn r#gen(&self, p: &mut Codegen, ctx: Context) {
+    fn r#gen(&self, p: &mut Codegen, _ctx: Context) {
         let is_multi_line = self.elements.len() > 2;
+        let last_type_argument_closer = (p.is_typescript && self.elements.len() > 1)
+            .then(|| {
+                self.elements.iter().rposition(|element| {
+                    !matches!(
+                        element,
+                        ArrayExpressionElement::SpreadElement(_)
+                            | ArrayExpressionElement::Elision(_)
+                    ) && crate::typescript::expression_starts_with_ts_type_argument_close(
+                        element.to_expression(),
+                        Precedence::Comma,
+                        Context::empty(),
+                    )
+                })
+            })
+            .flatten();
         p.add_source_mapping(self.span);
         p.print_ascii_byte(b'[');
         if is_multi_line {
@@ -1657,7 +1664,19 @@ impl Gen for ArrayExpression<'_> {
             } else if i != 0 {
                 p.print_soft_space();
             }
-            item.print(p, ctx);
+            let precedence = if last_type_argument_closer.is_some_and(|closer| i < closer)
+                && Codegen::array_element_expression(item).is_some_and(|expression| {
+                    crate::typescript::expression_ends_with_ts_type_argument_open(
+                        expression,
+                        Precedence::Comma,
+                        Context::empty(),
+                    )
+                }) {
+                Precedence::Shift
+            } else {
+                Precedence::Comma
+            };
+            p.print_array_element(item, precedence);
             if i == self.elements.len() - 1 && matches!(item, ArrayExpressionElement::Elision(_)) {
                 p.print_comma();
             }
@@ -2277,7 +2296,35 @@ impl Gen for AssignmentTargetRest<'_> {
 impl GenExpr for SequenceExpression<'_> {
     fn gen_expr(&self, p: &mut Codegen, precedence: Precedence, ctx: Context) {
         p.wrap(precedence >= self.precedence(), |p| {
-            p.print_expressions(&self.expressions, Precedence::Lowest, ctx.and_forbid_call(false));
+            let expression_ctx = ctx.and_forbid_call(false);
+            let last_type_argument_closer = (p.is_typescript && self.expressions.len() > 1)
+                .then(|| {
+                    self.expressions.iter().rposition(|expression| {
+                        crate::typescript::expression_starts_with_ts_type_argument_close(
+                            expression,
+                            Precedence::Lowest,
+                            expression_ctx,
+                        )
+                    })
+                })
+                .flatten();
+            p.print_expressions(
+                &self.expressions,
+                |index, _| {
+                    if last_type_argument_closer.is_some_and(|closer| index < closer)
+                        && crate::typescript::expression_ends_with_ts_type_argument_open(
+                            &self.expressions[index],
+                            Precedence::Lowest,
+                            expression_ctx,
+                        )
+                    {
+                        Precedence::Shift
+                    } else {
+                        Precedence::Lowest
+                    }
+                },
+                expression_ctx,
+            );
         });
     }
 }
@@ -2296,6 +2343,23 @@ impl GenExpr for ImportExpression<'_> {
                     .options
                     .as_ref()
                     .is_some_and(|options| p.has_comment(options.span().start)));
+        let source_precedence = if p.is_typescript
+            && self.options.as_ref().is_some_and(|options| {
+                crate::typescript::expression_starts_with_ts_type_argument_close(
+                    options,
+                    Precedence::Comma,
+                    Context::empty(),
+                )
+            })
+            && crate::typescript::expression_ends_with_ts_type_argument_open(
+                &self.source,
+                Precedence::Comma,
+                Context::empty(),
+            ) {
+            Precedence::Shift
+        } else {
+            Precedence::Comma
+        };
 
         p.wrap(wrap, |p| {
             p.print_space_before_identifier();
@@ -2315,7 +2379,7 @@ impl GenExpr for ImportExpression<'_> {
                 p.print_soft_newline();
                 p.print_indent();
             }
-            self.source.print_expr(p, Precedence::Comma, Context::empty());
+            self.source.print_expr(p, source_precedence, Context::empty());
             if let Some(options) = &self.options {
                 p.print_comma();
                 if has_comment {

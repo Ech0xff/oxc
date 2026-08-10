@@ -2110,10 +2110,7 @@ impl<'a> CompileOutput<'a> {
 
 /// Drop comments left dangling by compilation.
 ///
-/// Compiled functions preserve source spans for source maps, but their statement
-/// structure can still differ from the input. A comment attached inside a rewritten
-/// function may therefore target a statement that no longer exists. Keep only
-/// comments still anchored to a top-level statement.
+/// Rewritten functions may no longer contain the statements comments were attached to.
 fn prune_inner_comments(program: &mut Program<'_>) {
     if program.comments.is_empty() {
         return;
@@ -2161,7 +2158,7 @@ fn ox_build_function<'a>(
     fn_type: FunctionType,
 ) -> ArenaBox<'a, Function<'a>> {
     Function::boxed(
-        codegen.span.unwrap_or(SPAN),
+        codegen.span.unwrap_or_default(),
         fn_type,
         codegen.id.clone_in_with_semantic_ids(ast.allocator()),
         codegen.generator,
@@ -2185,7 +2182,7 @@ fn ox_build_compiled_expression<'a>(
 ) -> Expression<'a> {
     match original_kind {
         OriginalFnKind::ArrowFunctionExpression => Expression::new_arrow_function_expression(
-            codegen.span.unwrap_or(SPAN),
+            codegen.span.unwrap_or_default(),
             codegen.is_async,
             None,
             codegen.params.clone_in_with_semantic_ids(ast.allocator()),

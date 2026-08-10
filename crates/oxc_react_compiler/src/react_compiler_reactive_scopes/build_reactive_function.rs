@@ -312,7 +312,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
             let block_id_val = block.id;
             let instructions: Vec<_> = block.instructions.iter().copied().collect();
             let terminal = block.terminal.clone_in(self.env.allocator);
-            let terminal_source_span = terminal.span().copied();
+            let terminal_source_span = terminal.span().copied().unwrap_or_default();
 
             if !self.cx.emitted.insert(block_id_val) {
                 return Err(ErrorCategory::Invariant
@@ -1323,7 +1323,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
         &self,
         block: BlockId,
         id: EvaluationOrder,
-        span: Option<Span>,
+        span: Span,
     ) -> Result<Option<ReactiveStatement<'a>>, OxcDiagnostic> {
         let (target_block, target_kind) = self.cx.get_break_target(block)?;
         if self.cx.scope_fallthroughs.contains(&target_block) {
@@ -1344,7 +1344,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
         &self,
         block: BlockId,
         id: EvaluationOrder,
-        span: Option<Span>,
+        span: Span,
     ) -> Result<ReactiveStatement<'a>, OxcDiagnostic> {
         let (target_block, target_kind) = match self.cx.get_continue_target(block) {
             Some(result) => result,

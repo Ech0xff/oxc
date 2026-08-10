@@ -982,7 +982,7 @@ fn lower_member_expression_impl<'a>(
 
 /// Build a HIR `TemplateQuasi` from an oxc `TemplateElement`.
 fn template_quasi_from_oxc<'a>(q: &oxc::TemplateElement<'a>) -> TemplateQuasi<'a> {
-    TemplateQuasi { raw: q.value.raw, cooked: q.value.cooked }
+    TemplateQuasi { raw: q.value.raw, cooked: q.value.cooked, span: Some(q.span) }
 }
 
 /// Lower the `import` keyword callee of an `ImportExpression`. The original Babel

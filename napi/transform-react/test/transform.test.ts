@@ -137,6 +137,7 @@ describe("transformSync", () => {
       sourcesContent: [fixture],
       version: 3,
     });
+    expect(result.map?.mappings).not.toBe("");
   });
 
   it("can filter files with sources", () => {

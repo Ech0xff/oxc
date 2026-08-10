@@ -2110,10 +2110,10 @@ impl<'a> CompileOutput<'a> {
 
 /// Drop comments left dangling by compilation.
 ///
-/// The compiled functions were rebuilt with fresh spans, so a comment that
-/// pointed inside one no longer lines up with any statement and codegen would
-/// re-emit it at a stale position. Keep only the comments still anchored to a
-/// top-level statement.
+/// Compiled functions preserve source spans for source maps, but their statement
+/// structure can still differ from the input. A comment attached inside a rewritten
+/// function may therefore target a statement that no longer exists. Keep only
+/// comments still anchored to a top-level statement.
 fn prune_inner_comments(program: &mut Program<'_>) {
     if program.comments.is_empty() {
         return;
@@ -2161,7 +2161,7 @@ fn ox_build_function<'a>(
     fn_type: FunctionType,
 ) -> ArenaBox<'a, Function<'a>> {
     Function::boxed(
-        SPAN,
+        codegen.span.unwrap_or(SPAN),
         fn_type,
         codegen.id.clone_in_with_semantic_ids(ast.allocator()),
         codegen.generator,
@@ -2185,7 +2185,7 @@ fn ox_build_compiled_expression<'a>(
 ) -> Expression<'a> {
     match original_kind {
         OriginalFnKind::ArrowFunctionExpression => Expression::new_arrow_function_expression(
-            SPAN,
+            codegen.span.unwrap_or(SPAN),
             codegen.is_async,
             None,
             codegen.params.clone_in_with_semantic_ids(ast.allocator()),
@@ -2224,7 +2224,11 @@ fn ox_replace_function<'a>(
         func.return_type = None;
         func.this_param = None;
     }
+    let source_id_span = func.id.as_ref().map(|id| id.span);
     func.id = codegen.id.clone_in_with_semantic_ids(ast.allocator());
+    if let (Some(id), Some(span)) = (&mut func.id, source_id_span) {
+        id.span = span;
+    }
     func.params = params;
     func.body = Some(codegen.body.clone_in_with_semantic_ids(ast.allocator()));
     func.generator = codegen.generator;
@@ -2413,7 +2417,7 @@ impl<'a> oxc_ast_visit::VisitMut<'a> for OxcVisitor<'a, '_> {
                 }
                 if func.scope_id.get() == Some(*scope_id) {
                     let f = Function::boxed(
-                        SPAN,
+                        func.span,
                         FunctionType::FunctionExpression,
                         func.id.clone_in_with_semantic_ids(ast.allocator()),
                         func.generator,

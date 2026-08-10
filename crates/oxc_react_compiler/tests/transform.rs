@@ -3,7 +3,9 @@
 use cow_utils::CowUtils;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{ModuleExportName, Program, Statement};
-use oxc_codegen::Codegen;
+use std::path::PathBuf;
+
+use oxc_codegen::{Codegen, CodegenOptions};
 use oxc_diagnostics::Diagnostics;
 use oxc_parser::Parser;
 use oxc_semantic::SemanticBuilder;
@@ -68,6 +70,59 @@ fn memoizes_a_component_end_to_end() {
         "expected the compiler-runtime cache import in output:\n{output}"
     );
     assert!(output.contains("_c("), "expected memo cache reads (`_c(...)`) in output:\n{output}");
+}
+
+#[test]
+fn compiled_functions_preserve_source_map_locations() {
+    let source = "\
+export function Component({ value }) {
+  const doubled = value * 2;
+  if (doubled > 4) {
+    return <span>{`value:${doubled}`}</span>;
+  }
+  return <div data-value={doubled}>{value}</div>;
+}
+";
+
+    let allocator = Allocator::default();
+    let (program, result) = transform_source(source, SourceType::tsx(), &allocator, options());
+    assert!(result.changed, "component should compile: {:?}", result.diagnostics);
+    assert!(result.diagnostics.is_empty(), "unexpected diagnostics: {:?}", result.diagnostics);
+
+    let generated = Codegen::new()
+        .with_options(CodegenOptions {
+            source_map_path: Some(PathBuf::from("Component.tsx")),
+            ..CodegenOptions::default()
+        })
+        .build(&program);
+    let map = generated.map.expect("source map should be generated");
+    let mapped_source_positions = map
+        .get_tokens()
+        .map(|token| (token.get_src_line(), token.get_src_col()))
+        .collect::<Vec<_>>();
+
+    for needle in [
+        "value })",
+        "value * 2",
+        "if (doubled",
+        "return <span>",
+        "<span>",
+        "`value:${doubled}",
+        "return <div",
+        "<div data-value",
+    ] {
+        let offset =
+            source.find(needle).unwrap_or_else(|| panic!("missing fixture text: {needle}"));
+        let prefix = &source[..offset];
+        let line = prefix.bytes().filter(|byte| *byte == b'\n').count() as u32;
+        let line_start = prefix.rfind('\n').map_or(0, |index| index + 1);
+        let column = prefix[line_start..].encode_utf16().count() as u32;
+        assert!(
+            mapped_source_positions.contains(&(line, column)),
+            "expected a mapping for `{needle}` at {line}:{column}; generated code:\n{}",
+            generated.code,
+        );
+    }
 }
 
 #[test]

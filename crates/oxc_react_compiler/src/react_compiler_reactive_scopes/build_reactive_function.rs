@@ -312,6 +312,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
             let block_id_val = block.id;
             let instructions: Vec<_> = block.instructions.iter().copied().collect();
             let terminal = block.terminal.clone_in(self.env.allocator);
+            let terminal_source_span = terminal.span().copied();
 
             if !self.cx.emitted.insert(block_id_val) {
                 return Err(ErrorCategory::Invariant
@@ -383,6 +384,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
                             },
                             label:
                                 fallthrough_id.map(|ft| ReactiveLabel { id: ft, implicit: false }),
+                            span: terminal_source_span,
                         },
                     )));
 
@@ -435,6 +437,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
                             },
                             label:
                                 fallthrough_id.map(|ft| ReactiveLabel { id: ft, implicit: false }),
+                            span: terminal_source_span,
                         },
                     )));
 
@@ -476,6 +479,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
                             },
                             label:
                                 fallthrough_id.map(|ft| ReactiveLabel { id: ft, implicit: false }),
+                            span: terminal_source_span,
                         },
                     )));
 
@@ -522,6 +526,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
                             },
                             label:
                                 fallthrough_id.map(|ft| ReactiveLabel { id: ft, implicit: false }),
+                            span: terminal_source_span,
                         },
                     )));
 
@@ -576,6 +581,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
                             },
                             label:
                                 fallthrough_id.map(|ft| ReactiveLabel { id: ft, implicit: false }),
+                            span: terminal_source_span,
                         },
                     )));
 
@@ -626,6 +632,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
                             },
                             label:
                                 fallthrough_id.map(|ft| ReactiveLabel { id: ft, implicit: false }),
+                            span: terminal_source_span,
                         },
                     )));
 
@@ -671,6 +678,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
                             },
                             label:
                                 fallthrough_id.map(|ft| ReactiveLabel { id: ft, implicit: false }),
+                            span: terminal_source_span,
                         },
                     )));
 
@@ -702,6 +710,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
                             terminal: ReactiveTerminal::Label { block: label_body, id: *id },
                             label:
                                 fallthrough_id.map(|ft| ReactiveLabel { id: ft, implicit: false }),
+                            span: terminal_source_span,
                         },
                     )));
 
@@ -740,12 +749,15 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
                 Terminal::Goto { block: goto_block, variant, id, .. } => {
                     match variant {
                         GotoVariant::Break => {
-                            if let Some(stmt) = self.visit_break(*goto_block, *id)? {
+                            if let Some(stmt) =
+                                self.visit_break(*goto_block, *id, terminal_source_span)?
+                            {
                                 block_value.push(stmt);
                             }
                         }
                         GotoVariant::Continue => {
-                            let stmt = self.visit_continue(*goto_block, *id)?;
+                            let stmt =
+                                self.visit_continue(*goto_block, *id, terminal_source_span)?;
                             block_value.push(stmt);
                         }
                         GotoVariant::Try => {
@@ -793,6 +805,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
                             },
                             label:
                                 fallthrough_id.map(|ft| ReactiveLabel { id: ft, implicit: false }),
+                            span: terminal_source_span,
                         },
                     )));
 
@@ -852,6 +865,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
                         ReactiveTerminalStatement {
                             terminal: ReactiveTerminal::Return { value: *value, id: *id },
                             label: None,
+                            span: terminal_source_span,
                         },
                     )));
                 }
@@ -861,6 +875,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
                         ReactiveTerminalStatement {
                             terminal: ReactiveTerminal::Throw { value: *value, id: *id },
                             label: None,
+                            span: terminal_source_span,
                         },
                     )));
                 }
@@ -872,7 +887,9 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
                 Terminal::Branch { test, consequent, alternate, id, .. } => {
                     let alloc = self.env.allocator;
                     let consequent_block = if self.cx.is_scheduled(*consequent) {
-                        if let Some(stmt) = self.visit_break(*consequent, *id)? {
+                        if let Some(stmt) =
+                            self.visit_break(*consequent, *id, terminal_source_span)?
+                        {
                             ArenaVec::from_iter_in([stmt], &alloc)
                         } else {
                             ArenaVec::new_in(&alloc)
@@ -897,6 +914,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
                                 id: *id,
                             },
                             label: None,
+                            span: terminal_source_span,
                         },
                     )));
                 }
@@ -1305,6 +1323,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
         &self,
         block: BlockId,
         id: EvaluationOrder,
+        span: Option<Span>,
     ) -> Result<Option<ReactiveStatement<'a>>, OxcDiagnostic> {
         let (target_block, target_kind) = self.cx.get_break_target(block)?;
         if self.cx.scope_fallthroughs.contains(&target_block) {
@@ -1317,6 +1336,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
         Ok(Some(ReactiveStatement::Terminal(self.box_in(ReactiveTerminalStatement {
             terminal: ReactiveTerminal::Break { target: target_block, id, target_kind },
             label: None,
+            span,
         }))))
     }
 
@@ -1324,6 +1344,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
         &self,
         block: BlockId,
         id: EvaluationOrder,
+        span: Option<Span>,
     ) -> Result<ReactiveStatement<'a>, OxcDiagnostic> {
         let (target_block, target_kind) = match self.cx.get_continue_target(block) {
             Some(result) => result,
@@ -1338,6 +1359,7 @@ impl<'a, 'b, 'h> Driver<'a, 'b, 'h> {
         Ok(ReactiveStatement::Terminal(self.box_in(ReactiveTerminalStatement {
             terminal: ReactiveTerminal::Continue { target: target_block, id, target_kind },
             label: None,
+            span,
         })))
     }
 }

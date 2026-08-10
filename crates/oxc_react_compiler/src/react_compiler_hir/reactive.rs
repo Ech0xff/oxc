@@ -113,6 +113,9 @@ pub enum ReactiveValue<'a> {
 pub struct ReactiveTerminalStatement<'a> {
     pub terminal: ReactiveTerminal<'a>,
     pub label: Option<ReactiveLabel>,
+    /// Source span of the HIR terminal that produced this statement.
+    /// `None` is reserved for compiler-generated control flow.
+    pub span: Option<Span>,
 }
 
 #[derive(Debug, Clone)]
@@ -358,6 +361,7 @@ impl<'a> CloneIn<'a> for ReactiveTerminalStatement<'a> {
         ReactiveTerminalStatement {
             terminal: self.terminal.clone_in_impl(sem, alloc),
             label: self.label.clone(),
+            span: self.span,
         }
     }
 }

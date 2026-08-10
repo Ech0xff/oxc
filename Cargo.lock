@@ -2046,6 +2046,7 @@ dependencies = [
  "oxc_ast",
  "oxc_diagnostics",
  "oxc_formatter_core",
+ "oxc_formatter_tests",
  "oxc_jsdoc",
  "oxc_parser",
  "oxc_semantic",
@@ -2071,7 +2072,6 @@ dependencies = [
  "oxc_data_structures",
  "oxc_span",
  "rustc-hash",
- "serde_json",
  "unicode-width",
 ]
 
@@ -2085,6 +2085,7 @@ dependencies = [
  "oxc_allocator",
  "oxc_diagnostics",
  "oxc_formatter_core",
+ "oxc_formatter_tests",
  "oxc_span",
  "phf",
  "pico-args",
@@ -2100,6 +2101,7 @@ dependencies = [
  "oxc_allocator",
  "oxc_diagnostics",
  "oxc_formatter_core",
+ "oxc_formatter_tests",
  "oxc_span",
  "oxc_tasks_common",
  "pico-args",
@@ -2115,11 +2117,20 @@ dependencies = [
  "oxc_ast",
  "oxc_diagnostics",
  "oxc_formatter_core",
+ "oxc_formatter_tests",
  "oxc_parser",
  "oxc_span",
  "oxc_syntax",
  "oxc_tasks_common",
  "pico-args",
+]
+
+[[package]]
+name = "oxc_formatter_tests"
+version = "0.62.0"
+dependencies = [
+ "oxc_formatter_core",
+ "serde_json",
 ]
 
 [[package]]
@@ -2132,6 +2143,7 @@ dependencies = [
  "oxc_allocator",
  "oxc_diagnostics",
  "oxc_formatter_core",
+ "oxc_formatter_tests",
  "oxc_span",
  "oxc_tasks_common",
  "pico-args",

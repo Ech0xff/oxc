@@ -2079,8 +2079,21 @@ fn ox_codegen_base_instruction_value<'a>(
             )))
         }
         InstructionValue::FunctionExpression {
-            name, name_hint, lowered_func, expr_type, ..
-        } => ox_codegen_function_expression(cx, name, name_hint, lowered_func, expr_type, span),
+            name,
+            name_span,
+            name_hint,
+            lowered_func,
+            expr_type,
+            ..
+        } => ox_codegen_function_expression(
+            cx,
+            name,
+            *name_span,
+            name_hint,
+            lowered_func,
+            expr_type,
+            span,
+        ),
         InstructionValue::TaggedTemplateExpression { tag, quasis, subexprs, .. } => {
             let tag_expr = ox_codegen_place_to_expression(cx, tag)?;
             let mut exprs: oxc_allocator::Vec<'a, oxc::Expression<'a>> =
@@ -2134,10 +2147,22 @@ fn ox_codegen_base_instruction_value<'a>(
             children,
             span,
             opening_span,
+            opening_name_span,
             closing_span,
-        } => {
-            ox_codegen_jsx_expression(cx, tag, props, children, *span, *opening_span, *closing_span)
-        }
+            closing_name_span,
+        } => ox_codegen_jsx_expression(
+            cx,
+            tag,
+            props,
+            children,
+            JsxSourceSpans {
+                element: *span,
+                opening: *opening_span,
+                opening_name: *opening_name_span,
+                closing: *closing_span,
+                closing_name: *closing_name_span,
+            },
+        ),
         InstructionValue::JsxFragment { children, .. } => {
             let mut child_nodes: oxc_allocator::Vec<'a, oxc::JSXChild<'a>> =
                 oxc_allocator::ArenaVec::new_in(&cx.ast);
@@ -2682,6 +2707,7 @@ fn ox_expression_to_simple_assignment_target<'a>(
 fn ox_codegen_function_expression<'a>(
     cx: &mut OxcContext<'a, '_>,
     name: &Option<Ident<'a>>,
+    name_span: Option<Span>,
     name_hint: &Option<Ident<'a>>,
     lowered_func: &crate::react_compiler_hir::LoweredFunction,
     expr_type: &FunctionExpressionType,
@@ -2728,9 +2754,13 @@ fn ox_codegen_function_expression<'a>(
             }
         }
         _ => {
-            let id = name
-                .as_ref()
-                .map(|n| oxc_ast::ast::BindingIdentifier::new(span, ox_str(&cx.ast, n), &cx.ast));
+            let id = name.as_ref().map(|n| {
+                oxc_ast::ast::BindingIdentifier::new(
+                    name_span.unwrap_or(span),
+                    ox_str(&cx.ast, n),
+                    &cx.ast,
+                )
+            });
             let func = oxc_ast::ast::Function::new(
                 span,
                 oxc::FunctionType::FunctionExpression,
@@ -2923,16 +2953,24 @@ fn ox_codegen_object_expression<'a>(
 // JSX codegen (oxc)
 // =============================================================================
 
+#[derive(Clone, Copy)]
+struct JsxSourceSpans {
+    element: Option<Span>,
+    opening: Option<Span>,
+    opening_name: Option<Span>,
+    closing: Option<Span>,
+    closing_name: Option<Span>,
+}
+
 fn ox_codegen_jsx_expression<'a>(
     cx: &mut OxcContext<'a, '_>,
     tag: &JsxTag,
     props: &[JsxAttribute],
     children: &Option<oxc_allocator::Vec<'a, Place>>,
-    span: Option<Span>,
-    opening_span: Option<Span>,
-    closing_span: Option<Span>,
+    spans: JsxSourceSpans,
 ) -> Result<OxValue<'a>, OxcDiagnostic> {
-    let opening_span = opening_span.or(span).unwrap_or_default();
+    let opening_span = spans.opening.or(spans.element).unwrap_or_default();
+    let opening_name_span = spans.opening_name.unwrap_or(opening_span);
     let mut attributes: oxc_allocator::Vec<'a, oxc::JSXAttributeItem<'a>> =
         oxc_allocator::ArenaVec::new_in(&cx.ast);
     for attr in props {
@@ -2945,7 +2983,7 @@ fn ox_codegen_jsx_expression<'a>(
             let is_fbt = SINGLE_CHILD_FBT_TAGS.contains(&builtin.name.as_str());
             (
                 oxc_ast::ast::Expression::new_string_literal(
-                    opening_span,
+                    opening_name_span,
                     ox_str(&cx.ast, &builtin.name),
                     None,
                     &cx.ast,
@@ -2955,7 +2993,7 @@ fn ox_codegen_jsx_expression<'a>(
         }
     };
 
-    let opening_name = ox_expression_to_jsx_tag(cx, &tag_value, opening_span)?;
+    let opening_name = ox_expression_to_jsx_tag(cx, &tag_value, opening_name_span)?;
 
     let mut child_nodes: oxc_allocator::Vec<'a, oxc::JSXChild<'a>> =
         oxc_allocator::ArenaVec::new_in(&cx.ast);
@@ -2980,12 +3018,13 @@ fn ox_codegen_jsx_expression<'a>(
     let closing = if is_self_closing {
         None
     } else {
-        let closing_span = closing_span.or(span).unwrap_or_default();
-        let closing_name = ox_expression_to_jsx_tag(cx, &tag_value, closing_span)?;
+        let closing_span = spans.closing.or(spans.element).unwrap_or_default();
+        let closing_name_span = spans.closing_name.unwrap_or(closing_span);
+        let closing_name = ox_expression_to_jsx_tag(cx, &tag_value, closing_name_span)?;
         Some(oxc_ast::ast::JSXClosingElement::boxed(closing_span, closing_name, &cx.ast))
     };
     let element = oxc::Expression::new_jsx_element(
-        span.unwrap_or_default(),
+        spans.element.unwrap_or_default(),
         opening,
         child_nodes,
         closing,

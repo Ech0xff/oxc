@@ -371,7 +371,9 @@ fn emit_outlined_jsx<'a>(
             children: None,
             span: None,
             opening_span: None,
+            opening_name_span: None,
             closing_span: None,
+            closing_name_span: None,
         },
         span: None,
         effects: None,
@@ -501,7 +503,9 @@ fn emit_updated_jsx<'a>(
             children,
             span,
             opening_span,
+            opening_name_span,
             closing_span,
+            closing_name_span,
         } = &instr.value
         {
             let mut new_props = ArenaVec::new_in(&alloc);
@@ -554,7 +558,9 @@ fn emit_updated_jsx<'a>(
                     children: new_children,
                     span: *span,
                     opening_span: *opening_span,
+                    opening_name_span: *opening_name_span,
                     closing_span: *closing_span,
+                    closing_name_span: *closing_name_span,
                 },
                 span: instr.span,
                 effects: instr.effects.as_ref().map(|v| v.clone_in(alloc)),

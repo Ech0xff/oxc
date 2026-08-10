@@ -77,11 +77,14 @@ fn compiled_functions_preserve_source_map_locations() {
     let source = "\
 export function Component({ value }) {
   const sourceObject = { sourceValue: value };
-  const doubled = sourceObject.sourceValue * 2;
+  const format = function formatValue(input) {
+    return input * 2;
+  };
+  const doubled = format(sourceObject.sourceValue);
   if (doubled > 4) {
     return <span>{`value:${doubled}`}</span>;
   }
-  return <div data-value={doubled}>{value}</div>;
+  return <Widget data-value={doubled}>{value}</Widget>;
 }
 ";
 
@@ -106,13 +109,17 @@ export function Component({ value }) {
         ("value })", 0),
         ("sourceValue: value", 0),
         ("sourceObject.sourceValue", "sourceObject.".len()),
+        ("function formatValue", "function ".len()),
         ("if (doubled", 0),
         ("return <span>", 0),
         ("<span>", 0),
+        ("<span>", 1),
+        ("</span>", 2),
         ("`value:${doubled}", 0),
-        ("return <div", 0),
-        ("<div data-value", 0),
+        ("return <Widget", 0),
+        ("<Widget data-value", 1),
         ("data-value=", 0),
+        ("</Widget>", 2),
     ] {
         let offset =
             source.find(needle).unwrap_or_else(|| panic!("missing fixture text: {needle}"))

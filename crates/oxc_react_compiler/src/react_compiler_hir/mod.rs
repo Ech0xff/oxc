@@ -630,7 +630,9 @@ pub enum InstructionValue<'a> {
         children: Option<ArenaVec<'a, Place>>,
         span: Option<Span>,
         opening_span: Option<Span>,
+        opening_name_span: Option<Span>,
         closing_span: Option<Span>,
+        closing_name_span: Option<Span>,
     },
     ObjectExpression {
         properties: ArenaVec<'a, ObjectPropertyOrSpread<'a>>,
@@ -704,6 +706,7 @@ pub enum InstructionValue<'a> {
     },
     FunctionExpression {
         name: Option<Ident<'a>>,
+        name_span: Option<Span>,
         name_hint: Option<Ident<'a>>,
         lowered_func: LoweredFunction,
         expr_type: FunctionExpressionType,
@@ -1742,12 +1745,14 @@ impl<'a> CloneIn<'a> for InstructionValue<'a> {
             }
             InstructionValue::FunctionExpression {
                 name,
+                name_span,
                 name_hint,
                 lowered_func,
                 expr_type,
                 span,
             } => InstructionValue::FunctionExpression {
                 name: *name,
+                name_span: *name_span,
                 name_hint: *name_hint,
                 lowered_func: *lowered_func,
                 expr_type: *expr_type,
@@ -1830,14 +1835,18 @@ impl<'a> CloneIn<'a> for InstructionValue<'a> {
                 children,
                 span,
                 opening_span,
+                opening_name_span,
                 closing_span,
+                closing_name_span,
             } => InstructionValue::JsxExpression {
                 tag: *tag,
                 props: props.clone_in_impl(sem, alloc),
                 children: children.as_ref().map(|v| v.clone_in_impl(sem, alloc)),
                 span: *span,
                 opening_span: *opening_span,
+                opening_name_span: *opening_name_span,
                 closing_span: *closing_span,
+                closing_name_span: *closing_name_span,
             },
             InstructionValue::ObjectExpression { properties, span } => {
                 InstructionValue::ObjectExpression {

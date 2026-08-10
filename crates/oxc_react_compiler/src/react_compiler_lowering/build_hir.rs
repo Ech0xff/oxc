@@ -2966,17 +2966,16 @@ fn lower_function_to_value<'a>(
     func: FunctionNode<'_, 'a>,
     expr_type: FunctionExpressionType,
 ) -> Result<InstructionValue<'a>, OxcDiagnostic> {
-    let span = match func {
-        FunctionNode::Arrow(arrow) => Some(arrow.span),
-        FunctionNode::Function(f) => Some(f.span),
-    };
-    let name = match func {
-        FunctionNode::Function(f) => f.id.as_ref().map(|id| id.name),
-        FunctionNode::Arrow(_) => None,
+    let (span, name, name_span) = match func {
+        FunctionNode::Arrow(arrow) => (Some(arrow.span), None, None),
+        FunctionNode::Function(f) => {
+            (Some(f.span), f.id.as_ref().map(|id| id.name), f.id.as_ref().map(|id| id.span))
+        }
     };
     let lowered_func = lower_function(builder, func)?;
     Ok(InstructionValue::FunctionExpression {
         name,
+        name_span,
         name_hint: None,
         lowered_func,
         expr_type,
@@ -3124,6 +3123,7 @@ fn lower_function_declaration<'a>(
     // Emit FunctionExpression instruction
     let fn_value = InstructionValue::FunctionExpression {
         name: func_name,
+        name_span: func_decl.id.as_ref().map(|id| id.span),
         name_hint: None,
         lowered_func,
         expr_type: FunctionExpressionType::FunctionDeclaration,
@@ -4464,7 +4464,9 @@ fn lower_jsx_element_expr<'a>(
 ) -> Result<InstructionValue<'a>, OxcDiagnostic> {
     let span = Some(jsx_element.span);
     let opening_span = Some(jsx_element.opening_element.span);
+    let opening_name_span = Some(jsx_element.opening_element.name.span());
     let closing_span = jsx_element.closing_element.as_ref().map(|c| c.span);
+    let closing_name_span = jsx_element.closing_element.as_ref().map(|c| c.name.span());
 
     // Lower the tag name
     let tag = lower_jsx_element_name(builder, &jsx_element.opening_element.name)?;
@@ -4661,7 +4663,9 @@ fn lower_jsx_element_expr<'a>(
         children: if children.is_empty() { None } else { Some(children) },
         span,
         opening_span,
+        opening_name_span,
         closing_span,
+        closing_name_span,
     })
 }
 

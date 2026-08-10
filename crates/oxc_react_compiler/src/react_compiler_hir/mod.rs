@@ -661,17 +661,20 @@ pub enum InstructionValue<'a> {
     PropertyStore {
         object: Place,
         property: PropertyLiteral<'a>,
+        property_span: Option<Span>,
         value: Place,
         span: Option<Span>,
     },
     PropertyLoad {
         object: Place,
         property: PropertyLiteral<'a>,
+        property_span: Option<Span>,
         span: Option<Span>,
     },
     PropertyDelete {
         object: Place,
         property: PropertyLiteral<'a>,
+        property_span: Option<Span>,
         span: Option<Span>,
     },
     ComputedStore {
@@ -1042,9 +1045,19 @@ pub struct ObjectProperty<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub enum ObjectPropertyKey<'a> {
-    String { name: Ident<'a> },
-    Identifier { name: Ident<'a> },
-    Computed { name: Place },
+    String { name: Ident<'a>, span: Option<Span> },
+    Identifier { name: Ident<'a>, span: Option<Span> },
+    Computed { name: Place, span: Option<Span> },
+}
+
+impl ObjectPropertyKey<'_> {
+    pub fn span(&self) -> Option<Span> {
+        match self {
+            Self::String { span, .. }
+            | Self::Identifier { span, .. }
+            | Self::Computed { span, .. } => *span,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1115,7 +1128,7 @@ pub enum JsxTag<'a> {
 #[derive(Debug, Clone, Copy)]
 pub enum JsxAttribute<'a> {
     SpreadAttribute { argument: Place },
-    Attribute { name: Ident<'a>, place: Place },
+    Attribute { name: Ident<'a>, name_span: Option<Span>, place: Place },
 }
 
 // =============================================================================
@@ -1678,21 +1691,28 @@ impl<'a> CloneIn<'a> for InstructionValue<'a> {
             InstructionValue::MetaProperty { meta, property, span } => {
                 InstructionValue::MetaProperty { meta: *meta, property: *property, span: *span }
             }
-            InstructionValue::PropertyStore { object, property, value, span } => {
+            InstructionValue::PropertyStore { object, property, property_span, value, span } => {
                 InstructionValue::PropertyStore {
                     object: *object,
                     property: *property,
+                    property_span: *property_span,
                     value: *value,
                     span: *span,
                 }
             }
-            InstructionValue::PropertyLoad { object, property, span } => {
-                InstructionValue::PropertyLoad { object: *object, property: *property, span: *span }
+            InstructionValue::PropertyLoad { object, property, property_span, span } => {
+                InstructionValue::PropertyLoad {
+                    object: *object,
+                    property: *property,
+                    property_span: *property_span,
+                    span: *span,
+                }
             }
-            InstructionValue::PropertyDelete { object, property, span } => {
+            InstructionValue::PropertyDelete { object, property, property_span, span } => {
                 InstructionValue::PropertyDelete {
                     object: *object,
                     property: *property,
+                    property_span: *property_span,
                     span: *span,
                 }
             }

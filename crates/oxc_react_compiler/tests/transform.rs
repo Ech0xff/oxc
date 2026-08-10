@@ -76,7 +76,8 @@ fn memoizes_a_component_end_to_end() {
 fn compiled_functions_preserve_source_map_locations() {
     let source = "\
 export function Component({ value }) {
-  const doubled = value * 2;
+  const sourceObject = { sourceValue: value };
+  const doubled = sourceObject.sourceValue * 2;
   if (doubled > 4) {
     return <span>{`value:${doubled}`}</span>;
   }
@@ -101,18 +102,21 @@ export function Component({ value }) {
         .map(|token| (token.get_src_line(), token.get_src_col()))
         .collect::<Vec<_>>();
 
-    for needle in [
-        "value })",
-        "value * 2",
-        "if (doubled",
-        "return <span>",
-        "<span>",
-        "`value:${doubled}",
-        "return <div",
-        "<div data-value",
+    for (needle, relative_offset) in [
+        ("value })", 0),
+        ("sourceValue: value", 0),
+        ("sourceObject.sourceValue", "sourceObject.".len()),
+        ("if (doubled", 0),
+        ("return <span>", 0),
+        ("<span>", 0),
+        ("`value:${doubled}", 0),
+        ("return <div", 0),
+        ("<div data-value", 0),
+        ("data-value=", 0),
     ] {
         let offset =
-            source.find(needle).unwrap_or_else(|| panic!("missing fixture text: {needle}"));
+            source.find(needle).unwrap_or_else(|| panic!("missing fixture text: {needle}"))
+                + relative_offset;
         let prefix = &source[..offset];
         let line = prefix.bytes().filter(|byte| *byte == b'\n').count() as u32;
         let line_start = prefix.rfind('\n').map_or(0, |index| index + 1);

@@ -478,7 +478,7 @@ fn match_optional_test_block<'a>(
     let instr1 = &func.instructions[consequent_block.instructions[1].index()];
 
     let (property_load_object, property, property_load_span) = match &instr0.value {
-        InstructionValue::PropertyLoad { object, property, span } => (object, property, span),
+        InstructionValue::PropertyLoad { object, property, span, .. } => (object, property, span),
         _ => return None,
     };
 

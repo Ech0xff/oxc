@@ -902,6 +902,7 @@ enum MemberProperty<'a> {
 struct LoweredMemberExpression<'a> {
     object: Place,
     property: MemberProperty<'a>,
+    property_span: Option<Span>,
     value: InstructionValue<'a>,
 }
 
@@ -922,15 +923,22 @@ fn lower_member_expression_impl<'a>(
     match member {
         oxc::MemberExpression::StaticMemberExpression(m) => {
             let span = Some(m.span);
+            let property_span = Some(m.property.span);
             let object = match lowered_object {
                 Some(obj) => obj,
                 None => lower_expression_to_temporary(builder, &m.object)?,
             };
             let prop_literal = PropertyLiteral::String(m.property.name);
-            let value = InstructionValue::PropertyLoad { object, property: prop_literal, span };
+            let value = InstructionValue::PropertyLoad {
+                object,
+                property: prop_literal,
+                property_span,
+                span,
+            };
             Ok(LoweredMemberExpression {
                 object,
                 property: MemberProperty::Literal(prop_literal),
+                property_span,
                 value,
             })
         }
@@ -942,11 +950,18 @@ fn lower_member_expression_impl<'a>(
             };
             // A numeric computed index is treated as a PropertyLoad (matches TS).
             if let oxc::Expression::NumericLiteral(lit) = &m.expression {
+                let property_span = Some(lit.span);
                 let prop_literal = PropertyLiteral::Number(FloatValue::new(lit.value));
-                let value = InstructionValue::PropertyLoad { object, property: prop_literal, span };
+                let value = InstructionValue::PropertyLoad {
+                    object,
+                    property: prop_literal,
+                    property_span,
+                    span,
+                };
                 return Ok(LoweredMemberExpression {
                     object,
                     property: MemberProperty::Literal(prop_literal),
+                    property_span,
                     value,
                 });
             }
@@ -955,6 +970,7 @@ fn lower_member_expression_impl<'a>(
             Ok(LoweredMemberExpression {
                 object,
                 property: MemberProperty::Computed(property),
+                property_span: property.span,
                 value,
             })
         }
@@ -974,6 +990,7 @@ fn lower_member_expression_impl<'a>(
             Ok(LoweredMemberExpression {
                 object,
                 property: MemberProperty::Literal(PropertyLiteral::String(Ident::empty())),
+                property_span: None,
                 value: InstructionValue::Primitive { value: PrimitiveValue::Undefined, span },
             })
         }
@@ -1091,12 +1108,19 @@ fn lower_member_expression_from_simple_target<'a>(
     match target {
         oxc::SimpleAssignmentTarget::StaticMemberExpression(m) => {
             let span = Some(m.span);
+            let property_span = Some(m.property.span);
             let object = lower_expression_to_temporary(builder, &m.object)?;
             let prop_literal = PropertyLiteral::String(m.property.name);
-            let value = InstructionValue::PropertyLoad { object, property: prop_literal, span };
+            let value = InstructionValue::PropertyLoad {
+                object,
+                property: prop_literal,
+                property_span,
+                span,
+            };
             Ok(LoweredMemberExpression {
                 object,
                 property: MemberProperty::Literal(prop_literal),
+                property_span,
                 value,
             })
         }
@@ -1104,11 +1128,18 @@ fn lower_member_expression_from_simple_target<'a>(
             let span = Some(m.span);
             let object = lower_expression_to_temporary(builder, &m.object)?;
             if let oxc::Expression::NumericLiteral(lit) = &m.expression {
+                let property_span = Some(lit.span);
                 let prop_literal = PropertyLiteral::Number(FloatValue::new(lit.value));
-                let value = InstructionValue::PropertyLoad { object, property: prop_literal, span };
+                let value = InstructionValue::PropertyLoad {
+                    object,
+                    property: prop_literal,
+                    property_span,
+                    span,
+                };
                 return Ok(LoweredMemberExpression {
                     object,
                     property: MemberProperty::Literal(prop_literal),
+                    property_span,
                     value,
                 });
             }
@@ -1117,6 +1148,7 @@ fn lower_member_expression_from_simple_target<'a>(
             Ok(LoweredMemberExpression {
                 object,
                 property: MemberProperty::Computed(property),
+                property_span: property.span,
                 value,
             })
         }
@@ -1131,6 +1163,7 @@ fn lower_member_expression_from_simple_target<'a>(
             Ok(LoweredMemberExpression {
                 object,
                 property: MemberProperty::Literal(PropertyLiteral::String(Ident::empty())),
+                property_span: None,
                 value: InstructionValue::Primitive { value: PrimitiveValue::Undefined, span },
             })
         }
@@ -1738,6 +1771,7 @@ fn lower_member_assignment_target<'a>(
                 InstructionValue::PropertyStore {
                     object,
                     property: PropertyLiteral::String(member.property.name),
+                    property_span: Some(member.property.span),
                     value,
                     span: Some(span),
                 },
@@ -1754,6 +1788,7 @@ fn lower_member_assignment_target<'a>(
                     InstructionValue::PropertyStore {
                         object,
                         property: PropertyLiteral::Number(FloatValue::new(num.value)),
+                        property_span: Some(num.span),
                         value,
                         span: Some(span),
                     },
@@ -2090,7 +2125,10 @@ fn lower_assignment_target<'a>(
             for prop in &pattern.properties {
                 match prop {
                     oxc::AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(p) => {
-                        let key = ObjectPropertyKey::Identifier { name: p.binding.name };
+                        let key = ObjectPropertyKey::Identifier {
+                            name: p.binding.name,
+                            span: Some(p.binding.span),
+                        };
                         let id = &p.binding;
                         if let Some(default) = &p.init {
                             // `{foo = d}` — Babel shorthand AssignmentPattern. Lower
@@ -3413,11 +3451,13 @@ fn lower_expression<'a>(
                         unary.argument.without_parentheses().as_member_expression()
                     {
                         let lowered = lower_member_expression(builder, member)?;
+                        let property_span = lowered.property_span;
                         match lowered.property {
                             MemberProperty::Literal(property) => {
                                 Ok(InstructionValue::PropertyDelete {
                                     object: lowered.object,
                                     property,
+                                    property_span,
                                     span,
                                 })
                             }
@@ -3842,6 +3882,7 @@ fn lower_expression<'a>(
                         lower_member_expression_from_simple_target(builder, &update.argument)?;
                     let object = lowered.object;
                     let lowered_property = lowered.property;
+                    let property_span = lowered.property_span;
                     let prev_value = lower_value_to_temporary(builder, lowered.value)?;
 
                     let one = lower_value_to_temporary(
@@ -3870,6 +3911,7 @@ fn lower_expression<'a>(
                             InstructionValue::PropertyStore {
                                 object,
                                 property: prop_literal,
+                                property_span,
                                 value: updated,
                                 span: member_span,
                             },
@@ -4190,6 +4232,7 @@ fn lower_assignment_expression<'a>(
                             InstructionValue::PropertyStore {
                                 object,
                                 property: PropertyLiteral::String(member.property.name),
+                                property_span: Some(member.property.span),
                                 value: right,
                                 span: left_span,
                             },
@@ -4203,6 +4246,7 @@ fn lower_assignment_expression<'a>(
                                 InstructionValue::PropertyStore {
                                     object,
                                     property: PropertyLiteral::Number(FloatValue::new(num.value)),
+                                    property_span: Some(num.span),
                                     value: right,
                                     span: left_span,
                                 },
@@ -4367,6 +4411,7 @@ fn lower_assignment_expression<'a>(
                 let lowered = lower_member_expression_from_simple_target(builder, simple)?;
                 let object = lowered.object;
                 let lowered_property = lowered.property;
+                let property_span = lowered.property_span;
                 let current_value = lower_value_to_temporary(builder, lowered.value)?;
                 let right = lower_expression_to_temporary(builder, &assign.right)?;
                 let result = lower_value_to_temporary(
@@ -4382,6 +4427,7 @@ fn lower_assignment_expression<'a>(
                     MemberProperty::Literal(prop_literal) => Ok(InstructionValue::PropertyStore {
                         object,
                         property: prop_literal,
+                        property_span,
                         value: result,
                         span: member_span,
                     }),
@@ -4509,7 +4555,11 @@ fn lower_jsx_element_expr<'a>(
                     }
                 };
 
-                props.push(JsxAttribute::Attribute { name: prop_name, place: value });
+                props.push(JsxAttribute::Attribute {
+                    name: prop_name,
+                    name_span: Some(attr.name.span()),
+                    place: value,
+                });
             }
         }
     }
@@ -4746,6 +4796,7 @@ fn lower_jsx_member_expression<'a>(
     let value = InstructionValue::PropertyLoad {
         object,
         property: PropertyLiteral::String(Ident::from(prop_name)),
+        property_span: Some(expr.property.span),
         span: expr_span,
     };
     lower_value_to_temporary(builder, value)
@@ -5292,7 +5343,7 @@ fn lower_object_method<'a>(
     }
 
     let key = lower_object_property_key(builder, &method.key, method.computed)?
-        .unwrap_or(ObjectPropertyKey::String { name: Ident::empty() });
+        .unwrap_or(ObjectPropertyKey::String { name: Ident::empty(), span: None });
 
     let func = match &method.value {
         oxc::Expression::FunctionExpression(func) => func,
@@ -5323,23 +5374,25 @@ fn lower_object_property_key<'a>(
     computed: bool,
 ) -> Result<Option<ObjectPropertyKey<'a>>, OxcDiagnostic> {
     match key {
-        oxc::PropertyKey::StringLiteral(lit) => {
-            Ok(Some(ObjectPropertyKey::String { name: Ident::from(lit.value.as_str()) }))
-        }
+        oxc::PropertyKey::StringLiteral(lit) => Ok(Some(ObjectPropertyKey::String {
+            name: Ident::from(lit.value.as_str()),
+            span: Some(lit.span),
+        })),
         oxc::PropertyKey::StaticIdentifier(ident) if !computed => {
-            Ok(Some(ObjectPropertyKey::Identifier { name: ident.name }))
+            Ok(Some(ObjectPropertyKey::Identifier { name: ident.name, span: Some(ident.span) }))
         }
         oxc::PropertyKey::Identifier(ident) if !computed => {
-            Ok(Some(ObjectPropertyKey::Identifier { name: ident.name }))
+            Ok(Some(ObjectPropertyKey::Identifier { name: ident.name, span: Some(ident.span) }))
         }
         oxc::PropertyKey::NumericLiteral(lit) if !computed => {
             Ok(Some(ObjectPropertyKey::Identifier {
                 name: format_ident!(builder.environment().allocator, "{}", lit.value),
+                span: Some(lit.span),
             }))
         }
         _ if computed => {
             let place = lower_expression_to_temporary(builder, key.to_expression())?;
-            Ok(Some(ObjectPropertyKey::Computed { name: place }))
+            Ok(Some(ObjectPropertyKey::Computed { name: place, span: Some(key.span()) }))
         }
         _ => {
             let span = match key {

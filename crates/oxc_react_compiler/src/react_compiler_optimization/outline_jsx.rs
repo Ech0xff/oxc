@@ -13,6 +13,7 @@ use crate::react_compiler_utils::ordered_map::ArenaOrderedSet;
 use oxc_allocator::CloneIn;
 use oxc_allocator::Vec as ArenaVec;
 use oxc_index::IndexVec;
+use oxc_span::Span;
 use oxc_str::{Ident, IdentHashSet, format_ident};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -51,6 +52,7 @@ struct JsxInstrInfo {
 struct OutlinedJsxAttribute<'a> {
     original_name: Ident<'a>,
     new_name: Ident<'a>,
+    name_span: Option<Span>,
     place: Place,
 }
 
@@ -274,11 +276,12 @@ fn collect_props<'a>(
             for attr in props {
                 match attr {
                     JsxAttribute::SpreadAttribute { .. } => return None,
-                    JsxAttribute::Attribute { name, place } => {
+                    JsxAttribute::Attribute { name, name_span, place } => {
                         let new_name = generate_name(*name);
                         attributes.push(OutlinedJsxAttribute {
                             original_name: *name,
                             new_name,
+                            name_span: *name_span,
                             place: *place,
                         });
                     }
@@ -308,6 +311,7 @@ fn collect_props<'a>(
                     attributes.push(OutlinedJsxAttribute {
                         original_name: child_name,
                         new_name,
+                        name_span: None,
                         place: *child,
                     });
                 }
@@ -326,7 +330,11 @@ fn emit_outlined_jsx<'a>(
     outlined_tag: Ident<'a>,
 ) -> Option<Vec<Instruction<'a>>> {
     let props = ArenaVec::from_iter_in(
-        outlined_props.iter().map(|p| JsxAttribute::Attribute { name: p.new_name, place: p.place }),
+        outlined_props.iter().map(|p| JsxAttribute::Attribute {
+            name: p.new_name,
+            name_span: None,
+            place: p.place,
+        }),
         &env.allocator,
     );
 
@@ -501,7 +509,7 @@ fn emit_updated_jsx<'a>(
                 // TS: invariant(prop.kind === 'JsxAttribute', ...)
                 // Spread attributes would have caused collectProps to return null earlier
                 let (name, place) = match prop {
-                    JsxAttribute::Attribute { name, place } => (name, place),
+                    JsxAttribute::Attribute { name, place, .. } => (name, place),
                     JsxAttribute::SpreadAttribute { .. } => {
                         unreachable!("Expected only JsxAttribute, not spread")
                     }
@@ -515,6 +523,7 @@ fn emit_updated_jsx<'a>(
                     .expect("Expected a new property for identifier");
                 new_props.push(JsxAttribute::Attribute {
                     name: new_prop.original_name,
+                    name_span: new_prop.name_span,
                     place: new_prop.place,
                 });
             }
@@ -578,6 +587,7 @@ fn create_old_to_new_props_mapping<'a>(
             OutlinedJsxAttribute {
                 original_name: old_prop.original_name,
                 new_name: old_prop.new_name,
+                name_span: old_prop.name_span,
                 place: new_place,
             },
         );
@@ -594,7 +604,7 @@ fn emit_destructure_props<'a>(
     let mut properties = ArenaVec::new_in(&env.allocator);
     for prop in old_to_new_props.values() {
         properties.push(ObjectPropertyOrSpread::Property(ObjectProperty {
-            key: ObjectPropertyKey::String { name: prop.new_name },
+            key: ObjectPropertyKey::String { name: prop.new_name, span: None },
             property_type: ObjectPropertyType::Property,
             place: prop.place,
         }));
